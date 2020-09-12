@@ -1,2 +1,2 @@
-# NYC-Parking case study
+# NYC-Parking case study - Traffic Fine collection EDA
 ## SparkR
