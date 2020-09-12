@@ -1,0 +1,1208 @@
+###################################NYC Parking Case Study: Apache Spark##############
+#     Project: NYC Parking Case Study: Apache Spark			            #
+#     FileNAme: NYC_PARKING_Case_Study_apache_spark1.r                              #
+#     Description: File consist the code in SparkR language for the EDA performed   #
+#     File also consist the Analysis question and answers asked 		    #
+#					in the case study   			    #
+#     Project Team: Amitabha Banerjee						    #
+#					Rishabh Shrivastava			    #
+#					Saurav Kumar				    #
+#					vinod jha				    #
+#####################################################################################
+
+
+
+#Loading SparkR library
+library(SparkR)
+#loading ggplot library
+library(ggplot2)
+# initializing the spark session
+sparkR.session(master = "local")
+
+#A> Uploading data into S3
+#the data is copied from Kaggle repository to local EC2  cluster and then copied to the S3 bucket , screen shot for the same is attached in the documnet file 
+
+
+#reading the data from s3 in three different data frame 
+nyc_tkt15<-read.df("s3://rainbucketpgdds/Parking_Violations_Issued_-_Fiscal_Year_2015.csv",header=TRUE,source="csv",inferSchema=TRUE,delimiter=",", na.strings="")
+nyc_tkt16<-read.df("s3://rainbucketpgdds/Parking_Violations_Issued_-_Fiscal_Year_2016.csv",header=TRUE,source="csv",inferSchema=TRUE,delimiter=",", na.strings="")
+nyc_tkt17<-read.df("s3://rainbucketpgdds/Parking_Violations_Issued_-_Fiscal_Year_2017.csv",header=TRUE,source="csv",inferSchema=TRUE,delimiter=",", na.strings="")
+
+# "rainbucketpgdds" is a bucket name used to store the data 
+
+#Data Understanding
+#data counts on each data frame 
+nrow(nyc_tkt15) #11809233
+nrow(nyc_tkt16) #10626899
+nrow(nyc_tkt17) #10803028
+
+# checking the number of columns present in the data set 
+ncol(nyc_tkt15) #51
+ncol(nyc_tkt16) #51
+ncol(nyc_tkt17) #43
+
+
+colnames(nyc_tkt15)
+colnames(nyc_tkt16)
+#changing_column_names
+col_names<- c("Summons_Number","Plate_ID","Registration_State","Plate_Type","Issue_Date","Violation_Code","Vehicle_Body_Type","Vehicle_Make","Issuing_Agency","Street_Code1", "Street_Code2","Street_Code3","Vehicle_Expiration_Date","Violation_Location","Violation_Precinct","Issuer_Precinct","Issuer_Code","Issuer_Command","Issuer_Squad","Violation_Time","Time_First_Observed","Violation_County","Violation_In_Front_Of_Or_Opposite","House_Number","Street_Name","Intersecting_Street","Date_First_Observed","Law_Section","Sub_Division","Violation_Legal_Code","Days_Parking_In_Effect","From_Hours_In_Effect","To_Hours_In_Effect","Vehicle_Color","Unregistered_Vehicle?","Vehicle_Year","Meter_Number","Feet_From_Curb","Violation_Post_Code","Violation_Description","No_Standing_or_Stopping_Violation","Hydrant_Violation","Double_Parking_Violation","Latitude","Longitude","Community_Board","Community_Council","Census_Tract","BIN","BBL","NTA")
+
+colnames(nyc_tkt17)
+# number of columns are diff. than earlier 2 data frames, 8 columns are less to be precise
+col_names_17<- c("Summons_Number","Plate_ID","Registration_State","Plate_Type","Issue_Date","Violation_Code","Vehicle_Body_Type","Vehicle_Make","Issuing_Agency","Street_Code1", "Street_Code2","Street_Code3","Vehicle_Expiration_Date","Violation_Location","Violation_Precinct","Issuer_Precinct","Issuer_Code","Issuer_Command","Issuer_Squad","Violation_Time","Time_First_Observed","Violation_County","Violation_In_Front_Of_Or_Opposite","House_Number","Street_Name","Intersecting_Street","Date_First_Observed","Law_Section","Sub_Division","Violation_Legal_Code","Days_Parking_In_Effect","From_Hours_In_Effect","To_Hours_In_Effect","Vehicle_Color","Unregistered_Vehicle?","Vehicle_Year","Meter_Number","Feet_From_Curb","Violation_Post_Code","Violation_Description","No_Standing_or_Stopping_Violation","Hydrant_Violation","Double_Parking_Violation")
+
+colnames(nyc_tkt15) <- col_names
+colnames(nyc_tkt16) <- col_names
+# we'll verify the value of other 7 columns, if they are NA, we'll remove them later
+colnames(nyc_tkt17) <- col_names_17
+
+#lets verify if the column names are changed to the new values assigned 
+colnames(nyc_tkt15)
+colnames(nyc_tkt16)
+colnames(nyc_tkt17)
+
+#lets drop the duplicate records from the data frame 
+nyc_tkt15_1<-dropDuplicates(nyc_tkt15)
+nyc_tkt16_1<-dropDuplicates(nyc_tkt16)
+nyc_tkt17_1<-dropDuplicates(nyc_tkt17)
+
+#counting the data after dropping duplicate records 
+nrow(nyc_tkt15_1)    #nyc_tkt15_1 output - 10951257
+nrow(nyc_tkt16_1)    #nyc_tkt16_1 output - 10626899
+nrow(nyc_tkt17_1)    #nyc_tkt17_1 output - 10803028
+
+#backup checkpoint ?
+nyc_tkt_15_1_bkp <- nyc_tkt15_1
+nyc_tkt_16_1_bkp <- nyc_tkt16_1
+nyc_tkt_17_1_bkp <- nyc_tkt17_1
+
+#to remove the columns with complete NA values 
+# it looks like few columns have Na values for all the columns , based on manuall data checking and verifcation we are running below sql to check if all the columns are null or not 
+createOrReplaceTempView(nyc_tkt15_1,"nyc_tkt15_1_tbl")    
+count_NA_extra_col_2015 <- SparkR::sql("select No_Standing_or_Stopping_Violation,Hydrant_Violation,Double_Parking_Violation,Latitude,Longitude,Community_Board,Community_Council,Census_Tract,BIN,BBL,NTA, count(*) count_2015 
+from nyc_tkt15_1_tbl 
+group by No_Standing_or_Stopping_Violation,Hydrant_Violation,Double_Parking_Violation,Latitude,Longitude,Community_Board,Community_Council,Census_Tract,BIN,BBL,NTA")
+
+head(count_NA_extra_col_2015,num =10)
+
+#Output
+#No_Standing_or_Stopping_Violation             Hydrant_Violation                 Double_Parking_Violation Latitude Longitude Community_Board  Community_Council Census_Tract  BIN  BBL  NTA count_2015
+#1                                      <NA>                          <NA>                                     <NA>     <NA>      <NA>    <NA>           <NA>         <NA>  <NA>  <NA> <NA>   10951256
+#2 "average_medicare_payment_amt"":""170.27" "nppes_provider_gender"":""M" "nppes_provider_last_org_name"":""BROCK"     <NA>      <NA>     <NA>          <NA>         <NA>  <NA>  <NA>  <NA>          1
+ 
+createOrReplaceTempView(nyc_tkt16_1,"nyc_tkt16_1_tbl")    
+count_NA_extra_col_2016 <- SparkR::sql("select No_Standing_or_Stopping_Violation,Hydrant_Violation,Double_Parking_Violation,Latitude,Longitude,Community_Board,Community_Council,Census_Tract,BIN,BBL,NTA, count(*) 
+count_2016 from nyc_tkt16_1_tbl 
+group by No_Standing_or_Stopping_Violation,Hydrant_Violation,Double_Parking_Violation,Latitude,Longitude,Community_Board,Community_Council,Census_Tract,BIN,BBL,NTA")
+
+head(count_NA_extra_col_2016,num =10)
+#Output
+#No_Standing_or_Stopping_Violation Hydrant_Violation Double_Parking_Violation Latitude Longitude Community_Board Community_Council Census_Tract  BIN  BBL    NTA count_2016
+#1                              <NA>              <NA>                     <NA>     <NA>      <NA>            <NA>              <NA>         <NA> <NA> <NA>  <NA>   10626899
+
+
+
+createOrReplaceTempView(nyc_tkt17_1,"nyc_tkt17_1_tbl")    
+count_NA_extra_col_2017 <- SparkR::sql("select No_Standing_or_Stopping_Violation,Hydrant_Violation,Double_Parking_Violation, count(*) 
+count_2017 from nyc_tkt17_1_tbl 
+group by No_Standing_or_Stopping_Violation,Hydrant_Violation,Double_Parking_Violation")
+
+head(count_NA_extra_col_2017,num =10)
+#Output
+#No_Standing_or_Stopping_Violation Hydrant_Violation Double_Parking_Violation count_2017
+#1                              <NA>              <NA>                     <NA>   10803028
+
+
+#NA treatment : as we can see the above output for the columns only 1 record have a value which is of not much use 
+# Hence removing the columns where all the values are logically NA 
+
+#dropping the columns with NA 
+nyc_tkt15_1 <- drop(nyc_tkt15_1,c("No_Standing_or_Stopping_Violation","Hydrant_Violation","Double_Parking_Violation","Latitude","Longitude","Community_Board","Community_Council","Census_Tract","BIN","BBL","NTA"))
+nyc_tkt16_1 <- drop(nyc_tkt16_1,c("No_Standing_or_Stopping_Violation","Hydrant_Violation","Double_Parking_Violation","Latitude","Longitude","Community_Board","Community_Council","Census_Tract","BIN","BBL","NTA"))
+nyc_tkt17_1 <- drop(nyc_tkt17_1,c("No_Standing_or_Stopping_Violation","Hydrant_Violation","Double_Parking_Violation"))
+
+################################
+
+#----------------analysis question -----
+#B> Questions to be answered in the analysis
+
+#Examine the data.
+
+#1) Find total number of tickets for each year.
+
+# since we have considered fiscal year as single year with below assumption 
+# FY 14-15 -> 2015, equivalent data set nyc_tkt15_1 
+# FY 15-16 -> 2016, equivalent data set nyc_tkt16_1 
+# FY 16-17 -> 2017 , equivalent data set nyc_tkt17_1
+
+nrow(nyc_tkt15_1)    
+#nyc_tkt15_1 output - 10951257 , year 2015 
+
+nrow(nyc_tkt16_1)    
+#nyc_tkt16_1 output - 10626899 , year 2016 
+
+nrow(nyc_tkt17_1)    
+#nyc_tkt17_1 output - 10803028 , year 2017 
+ year<-c(2015,2016,2017)
+ ticket_count<-c(10951257,10626899,10803028)
+ ticket_df<-data.frame(year,ticket_count)
+ggplot(ticket_df,aes(x=year,y=ticket_count,fill=ticket_count))+geom_col()
+
+
+#2) Find out how many unique states the cars which got parking tickets came from.
+
+# now we have three data frames so we will take the output of each data frame and will find the unique of all the data frames 
+
+#2015
+
+#createOrReplaceTempView(nyc_tkt15_1,"nyc_tkt15_1_tbl")
+STATE_COUNT_2015 <-  SparkR::sql("select Registration_State, count(*) count_per_state_2015   from nyc_tkt15_1_tbl group by Registration_State")
+
+count(STATE_COUNT_2015) #69
+head(STATE_COUNT_2015,num = 69)
+
+# Gives 69 as output 
+#interesting fact is apart form 50 USA states we observed more values including 
+#Mexico and Canada states 
+#one more value 99 is used instead of CA 
+
+
+#2016
+#createOrReplaceTempView(nyc_tkt16_1,"nyc_tkt16_1_tbl")
+STATE_COUNT_2016 <-  SparkR::sql("select Registration_State, count(*) count_per_state_2016   from nyc_tkt16_1_tbl group by Registration_State")
+
+head(STATE_COUNT_2016 ,num = count(STATE_COUNT_2016))
+# Gives 68 as output 
+#interesting fact is apart form 50 USA states we observed more values including 
+#Mexico and Canada states 
+#one more value 99 is used instead of CA 
+
+#2017
+#createOrReplaceTempView(nyc_tkt17_1,"nyc_tkt17_1_tbl")
+
+STATE_COUNT_2017 <-  SparkR::sql("select Registration_State, count(*) count_per_state_2017   from nyc_tkt17_1_tbl group by Registration_State")
+head(STATE_COUNT_2017, num = count(STATE_COUNT_2017))
+
+# Gives 67 as output 
+#interesting fact is apart form 50 USA states we observed more values including 
+#Mexico and Canada states 
+#one more value 99 is used instead of CA 
+
+
+#3) Some parking tickets don’t have addresses on them, which is cause for concern. Find out how many such tickets there are.
+
+Address_missing_2015 <- SparkR::sql("select count * from nyc_tkt15_1_tbl where House_Number is null or
+                                 Street_Name is null or House_Number in ('NA','') or Street_Name in ('NA','')")
+
+Address_missing_2016<-SparkR::sql("select count * from nyc_tkt16_1_tbl where House_Number is null or
+                                 Street_Name is null or House_Number in ('NA','') or Street_Name in ('NA','')")
+
+Address_missing_2017<-SparkR::sql("select count * from nyc_tkt17_1_tbl where House_Number is null or
+                                 Street_Name is null or House_Number in ('NA','') or Street_Name in ('NA','')")
+
+head(Address_missing_2015) 	
+##1807864 records have address missing in 2015 data 
+
+head(Address_missing_2016)	
+##2035232 records have address missing in 2016 data 
+
+head(Address_missing_2017)	
+##2289944 records have address missing in 2017 data 
+
+
+##############Aggregation tasks
+
+# 1.How often does each violation code occur? (frequency of violation codes - find the top 5)
+violiation_code_order_15<-SparkR::sql("select count(*) frequency_of_violation, Violation_Code  from nyc_tkt15_1_tbl group by Violation_Code order by count(*) DESC")
+
+violiation_code_order_16<-SparkR::sql("select count(*) frequency_of_violation, Violation_Code  from nyc_tkt16_1_tbl group by Violation_Code order by count(*) DESC")
+
+violiation_code_order_17<-SparkR::sql("select count(*) frequency_of_violation, Violation_Code  from nyc_tkt17_1_tbl group by Violation_Code order by count(*) DESC")
+
+head(violiation_code_order_15, num = 5 )
+
+#       frequency_of_violation Violation_Code
+#1                1501614             21
+#2                1324586             38
+#3                 924627             14
+#4                 761571             36
+#5                 746278             37
+ 
+#head(violiation_code_order_16, num = 5 )
+       frequency_of_violation Violation_Code
+1                1531587             21
+2                1253512             36
+3                1143696             38
+4                 875614             14
+5                 686610             37
+
+head(violiation_code_order_17, num = 5 )
+#      frequency_of_violation Violation_Code
+#1                1528588             21
+#2                1400614             36
+#3                1062304             38
+#4                 893498             14
+#5                 618593             20
+
+#2..How often does each vehicle body type get a parking ticket? How about the vehicle make? (find the top 5 for both)
+
+#vehicle body type aggregation
+vhcle_bdy_typ_15<- SparkR::sql("select count (*) frequnecy_of_bodytype, Vehicle_Body_Type from nyc_tkt15_1_tbl group by Vehicle_Body_Type order by count(*) DESC")
+vhcle_bdy_typ_16<- SparkR::sql("select count (*) frequnecy_of_bodytype, Vehicle_Body_Type from nyc_tkt16_1_tbl group by Vehicle_Body_Type order by count(*) DESC")
+vhcle_bdy_typ_17<- SparkR::sql("select count (*) frequnecy_of_bodytype, Vehicle_Body_Type from nyc_tkt17_1_tbl group by Vehicle_Body_Type order by count(*) DESC")
+
+head(vhcle_bdy_typ_15,num=5)
+#     frequnecy_of_bodytype Vehicle_Body_Type
+#1               3451963              SUBN
+#2               3102510              4DSD
+#3               1605228               VAN
+#4                840442              DELV
+#5                453992               SDN
+
+head(vhcle_bdy_typ_16,num=5)
+
+#        frequnecy_of_bodytype Vehicle_Body_Type
+#1               3466037              SUBN
+#2               2992107              4DSD
+#3               1518303               VAN
+#4                755282              DELV
+#5                424043               SDN
+head(vhcle_bdy_typ_17,num=5)
+#       frequnecy_of_bodytype Vehicle_Body_Type
+#1               3719802              SUBN
+#2               3082020              4DSD
+#3               1411970               VAN
+#4                687330              DELV
+#5                438191               SDN
+
+##vehicle make type aggreagation
+
+vhcle_make_15<- SparkR::sql("select count (*) frequnecy_of_maketype, Vehicle_Make from nyc_tkt15_1_tbl group by Vehicle_Make order by count(*) DESC")
+vhcle_make_16<- SparkR::sql("select count (*) frequnecy_of_maketype, Vehicle_Make from nyc_tkt16_1_tbl group by Vehicle_Make order by count(*) DESC")
+vhcle_make_17<- SparkR::sql("select count (*) frequnecy_of_maketype, Vehicle_Make from nyc_tkt17_1_tbl group by Vehicle_Make order by count(*) DESC")
+
+head(vhcle_make_15,num=5)
+#       frequnecy_of_maketype Vehicle_Make
+#1               1417303         FORD
+#2               1123523        TOYOT
+#3               1018049        HONDA
+#4                837569        NISSA
+#5                836389        CHEVR
+head(vhcle_make_16,num=5)
+#        frequnecy_of_maketype Vehicle_Make
+#1               1324774         FORD
+#2               1154790        TOYOT
+#3               1014074        HONDA
+#4                834833        NISSA
+#5                759663        CHEVR
+
+head(vhcle_make_17,num=5)
+
+#frequnecy_of_maketype Vehicle_Make
+#1               1280958         FORD
+#2               1211451        TOYOT
+#3               1079238        HONDA
+#4                918590        NISSA
+#5                714655        CHEVR
+
+
+
+#3..A precinct is a police station that has a certain zone of the city under its command. Find the (5 highest) frequencies of:
+#Violating Precincts (this is the precinct of the zone where the violation occurred)
+Violation_Precinct_15<-SparkR::sql("select count(*) frequency_of_Violation_Precinct, Violation_Precinct  from nyc_tkt15_1_tbl group by Violation_Precinct order by count(*) DESC")
+
+Violation_Precinct_16<-SparkR::sql("select count(*) frequency_of_Violation_Precinct, Violation_Precinct  from nyc_tkt16_1_tbl group by Violation_Precinct order by count(*) DESC")
+
+Violation_Precinct_17<-SparkR::sql("select count(*) frequency_of_Violation_Precinct, Violation_Precinct  from nyc_tkt17_1_tbl group by Violation_Precinct order by count(*) DESC")
+
+head(Violation_Precinct_15, num = 5 )
+#      frequency_of_Violation_Precinct Violation_Precinct
+#1                         1633006                  0
+#2                          559716                 19
+#3                          400887                 18
+#4                          384596                 14
+#5                          307808                  1
+head(Violation_Precinct_16, num = 5 )
+#	frequency_of_Violation_Precinct Violation_Precinct
+#1                         1868655                  0
+#2                          554465                 19
+#3                          331704                 18
+#4                          324467                 14
+#5                          303850                  1
+head(Violation_Precinct_17, num = 5 )
+#	frequency_of_Violation_Precinct Violation_Precinct
+#1                         2072400                  0
+#2                          535671                 19
+#3                          352450                 14
+#4                          331810                  1
+#5                          306920                 18
+
+
+
+#Issuing Precincts (this is the precinct that issued the ticket)
+Issuer_Precinct_15<-SparkR::sql("select count(*) frequency_of_Issuer_Precinct, Issuer_Precinct  from nyc_tkt15_1_tbl group by Issuer_Precinct order by count(*) DESC")
+
+Issuer_Precinct_16<-SparkR::sql("select count(*) frequency_of_Issuer_Precinct, Issuer_Precinct  from nyc_tkt16_1_tbl group by Issuer_Precinct order by count(*) DESC")
+
+Issuer_Precinct_17<-SparkR::sql("select count(*) frequency_of_Issuer_Precinct, Issuer_Precinct  from nyc_tkt17_1_tbl group by Issuer_Precinct order by count(*) DESC")
+
+head(Issuer_Precinct_15, num = 5 )
+#             frequency_of_Issuer_Precinct Issuer_Precinct
+#1                      1834343               0
+#2                       544946              19
+#3                       391501              18
+#4                       369725              14
+#5                       298594               1
+
+head(Issuer_Precinct_16, num = 5 )
+#         frequency_of_Issuer_Precinct  Issuer_Precinct
+#1                      2140274               0
+#2                       540569              19
+#3                       323132              18
+#4                       315311              14
+#5                       295013               1
+
+head(Issuer_Precinct_17, num = 5 )
+#           frequency_of_Issuer_Precinct  Issuer_Precinct
+#1                      2388479               0
+#2                       521513              19
+#3                       344977              14
+#4                       321170               1
+#5                       296553              18
+
+#plot for the above data set for observation 
+
+freq_issuer_precnct<-c(1834343,544946,391501,369725,298594,2140274,540569,323132,315311,295013,2388479,521513,344977,321170,296553)
+Issuer_Precinct_top5<-as.factor(c(0,19,18,14,1,0,19,18,14,1,0,19,14,1,18))
+year<-as.factor(c(2015,2015,2015,2015,2015,2016,2016,2016,2016,2016,2017,2017,2017,2017,2017))
+precnct_df<-data.frame(freq_issuer_precnct,Issuer_Precinct_top5,year)
+ggplot(precnct_df,aes(x=Issuer_Precinct_top5,y=freq_issuer_precnct,fill=year))+geom_col()
+
+
+#4..Find the violation code frequency across 3 precincts which have issued the most number of tickets - do these precinct zones have an exceptionally high frequency of certain violation codes? Are these codes common across precincts?
+
+violation_code_freq_precinct_15<-SparkR::sql("select count(*) as frequency_of_violation, violation_code, Issuer_Precinct 
+	                            from nyc_tkt15_1_tbl where Issuer_Precinct in (0,18,19) group by violation_code, Issuer_Precinct order by count(*) desc")
+ 
+head(violation_code_freq_precinct_15,num=10)
+
+
+
+#For three most ticket issueing precincts in 2015
+#frequency_of_violation Violation_Code Issuer_Precinct
+#1                  761571             36               0
+#2                  662201              7               0
+#3                  195352              5               0
+#4                  180481             21               0
+#5                  121004             14              18
+#6                   90437             38              19
+#7                   79738             37              19
+#8                   60589             14              19
+#9                   57218             69              18
+#10                  56416             21              19
+
+violation_code_freq_precinct_16<-SparkR::sql("select count(*) as frequency_of_violation, violation_code, Issuer_Precinct 
+	                            from nyc_tkt16_1_tbl where Issuer_Precinct in (0,18,19) group by violation_code, Issuer_Precinct order by count(*) desc")
+
+head(violation_code_freq_precinct_16,num=10)
+
+
+##For three most ticket issueing precincts in 2016
+#frequency_of_violation  Violation_Code Issuer_Precinct
+#1                 1253511             36               0
+#2                  492469              7               0
+#3                  237174             21               0
+#4                  112376              5               0
+#5                   99857             14              18
+#6                   77183             38              19
+#7                   75641             37              19
+#8                   73016             46              19
+#9                   61742             14              19
+#10                  58719             21              19
+
+violation_code_freq_precinct_17<-SparkR::sql("select count(*) as frequency_of_violation, violation_code, Issuer_Precinct 
+	                            from nyc_tkt17_1_tbl where Issuer_Precinct in (0,14,19) group by violation_code, Issuer_Precinct order by count(*) desc")
+
+head(violation_code_freq_precinct_17,num=10)
+
+
+##For three most ticket issueing precincts in 2017 
+#frequency_of_violation Violation_Code Issuer_Precinct
+#1                 1400614             36               0
+#2                  516389              7               0
+#3                  268591             21               0
+#4                  145642              5               0
+#5                   86390             46              19
+#6                   73837             14              14
+#7                   72437             37              19
+#8                   72344             38              19
+#9                   58026             69              14
+#10                  57563             14              19
+
+#5..You’d want to find out the properties of parking violations across different times of the day:
+#The Violation Time field is specified in a strange format. Find a way to make this into a time attribute that you can use to divide into groups.
+
+#Find a way to deal with missing values, if any.
+
+#Divide 24 hours into 6 equal discrete bins of time. The intervals you choose are at your discretion. For each of these groups, find the 3 most commonly occurring violations
+
+Violation_Code_Time_bin_2015 <- SparkR::sql("SELECT  count(*) Frequency_of_violation,  Violation_Code , 
+(case when  substring(Violation_Time,1,2) in ('00','01','02','03','12') and upper(substring(Violation_Time,5,1))='A' then 'Night' 
+                                            when substring(Violation_Time,1,2) in ('04','05','06','07') and upper(substring(Violation_Time,5,1))='A' then 'Morning'
+                                            when substring(Violation_Time,1,2) in ('08','09','10','11') and upper(substring(Violation_Time,5,1))='A' then 'Late Morning'
+                                            when substring(Violation_Time,1,2) in ('12','00','01','02','03' ) and upper(substring(Violation_Time,5,1))='P' then 'Afternoon'
+                                            when substring(Violation_Time,1,2) in ('04','05','06','07') and upper(substring(Violation_Time,5,1))='P' then 'Evening'
+                                            when substring(Violation_Time,1,2) in ('08','09','10','11') and upper(substring(Violation_Time,5,1))='P' then 'Late Evening'
+                                            else null end ) as Violation_Time_bin 
+                                            from nyc_tkt15_1_tbl 
+                                            where Violation_Time is not null or (length(Violation_Time)=5 and 
+                                            upper(substring(Violation_Time,5,1)) in ('A','P') 
+                                            and substring(Violation_Time,1,2) in ('00','01','02','03','04','05','06','07', '08','09','10','11','12'))
+                                            group by Violation_Code, Violation_Time_bin
+                                            order by count(*) desc " )
+
+Violation_Code_Time_bin_2016 <- SparkR::sql("SELECT  count(*) Frequency_of_violation,  Violation_Code , 
+                                            (case when  substring(Violation_Time,1,2) in ('00','01','02','03','12') and upper(substring(Violation_Time,5,1))='A' then 'Night' 
+                                            when substring(Violation_Time,1,2) in ('04','05','06','07') and upper(substring(Violation_Time,5,1))='A' then 'Morning'
+                                            when substring(Violation_Time,1,2) in ('08','09','10','11') and upper(substring(Violation_Time,5,1))='A' then 'Late Morning'
+                                            when substring(Violation_Time,1,2) in ('12','00','01','02','03' ) and upper(substring(Violation_Time,5,1))='P' then 'Afternoon'
+                                            when substring(Violation_Time,1,2) in ('04','05','06','07') and upper(substring(Violation_Time,5,1))='P' then 'Evening'
+                                            when substring(Violation_Time,1,2) in ('08','09','10','11') and upper(substring(Violation_Time,5,1))='P' then 'Late Evening'
+                                            else null end ) as Violation_Time_bin 
+                                            from nyc_tkt16_1_tbl 
+                                            where Violation_Time is not null or (length(Violation_Time)=5 and 
+                                            upper(substring(Violation_Time,5,1)) in ('A','P') 
+                                            and substring(Violation_Time,1,2) in ('00','01','02','03','04','05','06','07', '08','09','10','11','12'))
+                                            group by Violation_Code, Violation_Time_bin
+                                            order by count(*) desc ")
+
+Violation_Code_Time_bin_2017 <- SparkR::sql("SELECT  count(*) Frequency_of_violation,  Violation_Code , 
+                                            (case when  substring(Violation_Time,1,2) in ('00','01','02','03','12') and upper(substring(Violation_Time,5,1))='A' then 'Night' 
+                                            when substring(Violation_Time,1,2) in ('04','05','06','07') and upper(substring(Violation_Time,5,1))='A' then 'Morning'
+                                            when substring(Violation_Time,1,2) in ('08','09','10','11') and upper(substring(Violation_Time,5,1))='A' then 'Late Morning'
+                                            when substring(Violation_Time,1,2) in ('12','00','01','02','03' ) and upper(substring(Violation_Time,5,1))='P' then 'Afternoon'
+                                            when substring(Violation_Time,1,2) in ('04','05','06','07') and upper(substring(Violation_Time,5,1))='P' then 'Evening'
+                                            when substring(Violation_Time,1,2) in ('08','09','10','11') and upper(substring(Violation_Time,5,1))='P' then 'Late Evening'
+                                            else null end ) as Violation_Time_bin 
+                                            from nyc_tkt17_1_tbl 
+                                            where Violation_Time is not null or (length(Violation_Time)=5 and 
+                                            upper(substring(Violation_Time,5,1)) in ('A','P') 
+                                            and substring(Violation_Time,1,2) in ('00','01','02','03','04','05','06','07', '08','09','10','11','12'))
+                                            group by Violation_Code, Violation_Time_bin
+                                            order by count(*) desc ")
+
+											
+###
+#2015
+head(filter(Violation_Code_Time_bin_2015,Violation_Code_Time_bin_2015$Violation_Time_bin == 'Night'))
+#Night top 5 violatios 2015
+#	Frequency_of_violation Violation_Code Violation_Time_bin
+#1                  67430             21              Night
+#2                  42406             40              Night
+#3                  39521             78              Night
+#4                  34081              7              Night
+#5                  30451             14              Night
+#6                  25039             85              Night
+
+
+head(filter(Violation_Code_Time_bin_2015,Violation_Code_Time_bin_2015$Violation_Time_bin == 'Morning'))
+#Morning top 5 violatios 2015
+
+#	Frequency_of_violation Violation_Code Violation_Time_bin
+#1                 134458             14            Morning
+#2                 106858             21            Morning
+#3                  91344             40            Morning
+#4                  81103             20            Morning
+#5                  56550             36            Morning
+#6                  55456              7            Morning
+
+head(filter(Violation_Code_Time_bin_2015,Violation_Code_Time_bin_2015$Violation_Time_bin == 'Late Morning'))
+#Late Morning top 5 violatios 2015
+
+#	Frequency_of_violation Violation_Code Violation_Time_bin
+#1                1192163             21       Late Morning
+#2                 449070             38       Late Morning
+#3                 360365             36       Late Morning
+#4                 297711             14       Late Morning
+#5                 210978             46       Late Morning
+#6                 194927             71       Late Morning
+
+
+head(filter(Violation_Code_Time_bin_2015,Violation_Code_Time_bin_2015$Violation_Time_bin == 'Afternoon'))
+#Afternoon top 5 violatios 2015
+
+#	 Frequency_of_violation Violation_Code Violation_Time_bin
+#1                 568272             38          Afternoon
+#2                 417613             37          Afternoon
+#3                 323524             36          Afternoon
+#4                 267625             14          Afternoon
+#5                 209828             20          Afternoon
+#6                 197073             46          Afternoon
+
+head(filter(Violation_Code_Time_bin_2015,Violation_Code_Time_bin_2015$Violation_Time_bin == 'Evening'))
+#Evening top 5 violatios 2015
+
+#	Frequency_of_violation Violation_Code Violation_Time_bin
+#1                 241327             38            Evening
+#2                 175802             37            Evening
+#3                 168888              7            Evening
+#4                 148538             14            Evening
+#5                  89709              5            Evening
+#6                  89337             20            Evening
+
+head(filter(Violation_Code_Time_bin_2015,Violation_Code_Time_bin_2015$Violation_Time_bin == 'Late Evening'))
+#Late Evening top 5 violatios 2015
+
+#	Frequency_of_violation Violation_Code Violation_Time_bin
+#1                  81981              7       Late Evening
+#2                  62418             38       Late Evening
+#3                  45821             14       Late Evening
+#4                  44891             40       Late Evening
+#5                  31231             20       Late Evening
+#6                  29324             78       Late Evening
+
+###
+#2016
+head(filter(Violation_Code_Time_bin_2016,Violation_Code_Time_bin_2016$Violation_Time_bin == 'Night'))
+#Night top 5 violatios 2016
+
+# Frequency_of_violation Violation_Code Violation_Time_bin
+#1                  72106             21              Night
+#2                  42098             40              Night
+#3                  32806             78              Night
+#4                  31779             14              Night
+#5                  25076              7              Night
+#6                  22862             20              Night
+
+head(filter(Violation_Code_Time_bin_2016,Violation_Code_Time_bin_2016$Violation_Time_bin == 'Morning'))
+#Morning top 5 violatios 2016
+
+#	Frequency_of_violation Violation_Code Violation_Time_bin
+#1                 140111             14            Morning
+#2                 114029             21            Morning
+#3                  91692             40            Morning
+#4                  79797             36            Morning
+#5                  77831             20            Morning
+#6                  45146             71            Morning
+
+head(filter(Violation_Code_Time_bin_2016,Violation_Code_Time_bin_2016$Violation_Time_bin == 'Late Morning'))
+#Late Morning top 5 violatios 2016
+
+#	Frequency_of_violation Violation_Code Violation_Time_bin
+#1                1209243             21       Late Morning
+#2                 586791             36       Late Morning
+#3                 388099             38       Late Morning
+#4                 276273             14       Late Morning
+#5                 220535             46       Late Morning
+#6                 185136             71       Late Morning
+
+
+head(filter(Violation_Code_Time_bin_2016,Violation_Code_Time_bin_2016$Violation_Time_bin == 'Afternoon'))
+#Afternoon top 5 violatios 2016
+
+#	Frequency_of_violation Violation_Code Violation_Time_bin
+#1                 545717             36          Afternoon
+#2                 488302             38          Afternoon
+#3                 383361             37          Afternoon
+#4                 247933             14          Afternoon
+#5                 216636             20          Afternoon
+#6                 213713             46          Afternoon
+
+head(filter(Violation_Code_Time_bin_2016,Violation_Code_Time_bin_2016$Violation_Time_bin == 'Evening'))
+#Evening top 5 violatios 2016
+
+#	Frequency_of_violation Violation_Code Violation_Time_bin
+#1                 211267             38            Evening
+#2                 161655             37            Evening
+#3                 134976             14            Evening
+#4                 124617              7            Evening
+#5                  82603             20            Evening
+#6                  75844             46            Evening
+
+head(filter(Violation_Code_Time_bin_2016,Violation_Code_Time_bin_2016$Violation_Time_bin == 'Late Evening'))
+#Late Evening top 5 violatios 2016
+
+#	Frequency_of_violation Violation_Code Violation_Time_bin
+#1                  60924              7       Late Evening
+#2                  53174             38       Late Evening
+#3                  44973             40       Late Evening
+#4                  44227             14       Late Evening
+#5                  31163             20       Late Evening
+#6                  24475             78       Late Evening
+
+###
+#2017
+head(filter(Violation_Code_Time_bin_2017,Violation_Code_Time_bin_2017$Violation_Time_bin == 'Night'))
+#Night top 5 violatios 2017
+
+#	Frequency_of_violation Violation_Code Violation_Time_bin
+#1                  77460             21              Night
+#2                  50947             40              Night
+#3                  32243             78              Night
+#4                  32064             14              Night
+#5                  25297              7              Night
+#6                  24611             20              Night
+ 
+
+head(filter(Violation_Code_Time_bin_2017,Violation_Code_Time_bin_2017$Violation_Time_bin == 'Morning'))
+#Morning top 5 violatios 2017
+
+#	Frequency_of_violation Violation_Code Violation_Time_bin
+#1                 141276             14            Morning
+#2                 119469             21            Morning
+#3                 112186             40            Morning
+#4                  84647             20            Morning
+#5                  44060              7            Morning
+#6                  43432             71            Morning
+
+
+head(filter(Violation_Code_Time_bin_2017,Violation_Code_Time_bin_2017$Violation_Time_bin == 'Late Morning'))
+#Late Morning top 5 violatios 2017
+
+#Frequency_of_violation Violation_Code Violation_Time_bin
+#1                1182689             21       Late Morning
+#2                 751422             36       Late Morning
+#3                 346518             38       Late Morning
+#4                 274288             14       Late Morning
+#5                 213696             46       Late Morning
+#6                 192307             71       Late Morning
+
+head(filter(Violation_Code_Time_bin_2017,Violation_Code_Time_bin_2017$Violation_Time_bin == 'Afternoon'))
+#Afternoon top 5 violatios 2017
+
+#	Frequency_of_violation Violation_Code Violation_Time_bin
+#1                 588395             36          Afternoon
+#2                 462758             38          Afternoon
+#3                 337075             37          Afternoon
+#4                 256331             14          Afternoon
+#5                 229390             46          Afternoon
+#6                 219207             20          Afternoon
+
+head(filter(Violation_Code_Time_bin_2017,Violation_Code_Time_bin_2017$Violation_Time_bin == 'Evening'))
+#Evening top 5 violatios 2017
+
+#	 Frequency_of_violation Violation_Code Violation_Time_bin
+#1                 203232             38            Evening
+#2                 145784             37            Evening
+#3                 144749             14            Evening
+#4                 131768              7            Evening
+#5                  85551             46            Evening
+#6                  83348             20            Evening
+
+head(filter(Violation_Code_Time_bin_2017,Violation_Code_Time_bin_2017$Violation_Time_bin == 'Late Evening'))
+#Late Evening top 5 violatios 2017
+
+#	Frequency_of_violation Violation_Code Violation_Time_bin
+#1                  65593              7       Late Evening
+#2                  47029             38       Late Evening
+#3                  44779             14       Late Evening
+#4                  44542             40       Late Evening
+#5                  31085             20       Late Evening
+#6                  25133             46       Late Evening
+
+
+#Now, try another direction. For the 3 most commonly occurring violation codes, find the most common times of day (in terms of the bins from the previous part)
+
+#assumption :- most commonly occurance is violation code has max count among all the time bins  
+
+#2015 , The three most commmonly orrcurance :- 
+#Violation_Code	sum_code_wise
+#21		1366451
+#38		1321087
+#14		924604
+
+#Using the three most commonly occuring violation code in below commands to find the time of the day with max violation with particular code
+
+#21,  2015
+head(arrange(filter(Violation_Code_Time_bin_2015,Violation_Code_Time_bin_2015$Violation_Code == 21),desc(Violation_Code_Time_bin_2015$Frequency_of_violation)))
+
+#	Frequency_of_violation Violation_Code Violation_Time_bin
+#1                1192163             21       Late Morning
+#2                 133718             21          Afternoon
+#3                 106858             21            Morning
+#4                  67430             21              Night
+#5                    823             21            Evening
+#6                    587             21       Late Evening
+
+# from the above output we can say in "Late Morning" time of the day Violating code 21 happens the most 
+# code 21 stands for "NO PARKING-STREET CLEANING"
+
+#38,  2015
+head(arrange(filter(Violation_Code_Time_bin_2015,Violation_Code_Time_bin_2015$Violation_Code == 38),desc(Violation_Code_Time_bin_2015$Frequency_of_violation)))
+
+#	 Frequency_of_violation Violation_Code Violation_Time_bin
+#1                 568272             38          Afternoon
+#2                 449070             38       Late Morning
+#3                 241327             38            Evening
+#4                  62418             38       Late Evening
+#5                   2852             38            Morning
+#6                    647             38              Night
+
+# from the above output we can say in "Afternoon" time of the day Violating code 38 happens the most 
+# code 38 stands for "FAIL TO DSPLY MUNI METER RECPT"
+
+#14,  2015
+head(arrange(filter(Violation_Code_Time_bin_2015,Violation_Code_Time_bin_2015$Violation_Code == 14),desc(Violation_Code_Time_bin_2015$Frequency_of_violation)))
+
+#	 Frequency_of_violation Violation_Code Violation_Time_bin
+#1                 297711             14       Late Morning
+#2                 267625             14          Afternoon
+#3                 148538             14            Evening
+#4                 134458             14            Morning
+#5                  45821             14       Late Evening
+#6                  30451             14              Night
+
+# from the above output we can say in "Late Morning" time of the day Violating code 14 happens the most 
+# code 14 stands for "FAIL TO DSPLY MUNI METER RECPT"
+
+#######
+
+#2016 , The three most commmonly orrcurance :- 
+#Violation_Code	sum_code_wise
+#21		1395378
+#36		1212305
+#38		1140842
+
+#Using the three most commonly occuring violation code in below commands to find the time of the day with max violation with particular code
+
+#21,  2016
+head(arrange(filter(Violation_Code_Time_bin_2016,Violation_Code_Time_bin_2016$Violation_Code == 21),desc(Violation_Code_Time_bin_2016$Frequency_of_violation)))
+
+
+#Frequency_of_violation Violation_Code Violation_Time_bin
+#1                1209243             21       Late Morning
+#2                 134329             21          Afternoon
+#3                 114029             21            Morning
+#4                  72106             21              Night
+#5                    601             21            Evening
+#6                    428             21       Late Evening
+
+# from the above output we can say in "Late Morning" time of the day Violating code 21 happens the most 
+# code 21 stands for "NO PARKING-STREET CLEANING"
+
+
+#36, 2016
+head(arrange(filter(Violation_Code_Time_bin_2016,Violation_Code_Time_bin_2016$Violation_Code == 36),desc(Violation_Code_Time_bin_2016$Frequency_of_violation)))
+
+#	Frequency_of_violation Violation_Code Violation_Time_bin
+#1                 586791             36       Late Morning
+#2                 545717             36          Afternoon
+#3                  79797             36            Morning
+#4                  41205             36            Evening
+#5                      1             36              Night
+
+# from the above output we can say in "Late Morning" time of the day Violating code 36 happens the most 
+# code 36  stands for "PHTO SCHOOL ZN SPEED VIOLATION"
+
+
+#38, 2016 
+head(arrange(filter(Violation_Code_Time_bin_2016,Violation_Code_Time_bin_2016$Violation_Code == 38),desc(Violation_Code_Time_bin_2016$Frequency_of_violation)))
+
+# Frequency_of_violation Violation_Code Violation_Time_bin
+#1                 488302             38          Afternoon
+#2                 388099             38       Late Morning
+#3                 211267             38            Evening
+#4                  53174             38       Late Evening
+#5                   2211             38            Morning
+#6                    384             38              Night
+
+# from the above output we can say in "Afternoon" time of the day Violating code 38 happens the most 
+# code 38 stands for "FAIL TO DSPLY MUNI METER RECPT"
+
+#######
+
+#2017 , The three most commmonly orrcurance :- 
+#Violation_Code	sum_code_wise
+#21	1379618
+#36	1339817
+#38	1073717
+
+
+
+#Using the three most commonly occuring violation code in below commands to find the time of the day with max violation with particular code
+
+#21,  2017
+head(arrange(filter(Violation_Code_Time_bin_2017,Violation_Code_Time_bin_2017$Violation_Code == 21),desc(Violation_Code_Time_bin_2017$Frequency_of_violation)))
+
+#	Frequency_of_violation Violation_Code Violation_Time_bin
+#1                1182689             21       Late Morning
+#2                 148013             21          Afternoon
+#3                 119469             21            Morning
+#4                  77460             21              Night
+#5                    551             21            Evening
+#6                    363             21       Late Evening
+
+# from the above output we can say in "Late Morning" time of the day Violating code 21 happens the most 
+# code 21 stands for "NO PARKING-STREET CLEANING"
+
+
+#36, 2017
+head(arrange(filter(Violation_Code_Time_bin_2017,Violation_Code_Time_bin_2017$Violation_Code == 36),desc(Violation_Code_Time_bin_2017$Frequency_of_violation)))
+
+#	Frequency_of_violation Violation_Code Violation_Time_bin
+#1                 751422             36       Late Morning
+#2                 588395             36          Afternoon
+#3                  33939             36            Morning
+#4                  26858             36            Evening
+
+# from the above output we can say in "Late Morning" time of the day Violating code 36 happens the most 
+# code 36  stands for "PHTO SCHOOL ZN SPEED VIOLATION"
+
+
+#38, 2017
+head(arrange(filter(Violation_Code_Time_bin_2017,Violation_Code_Time_bin_2017$Violation_Code == 38),desc(Violation_Code_Time_bin_2017$Frequency_of_violation)))
+
+#	Frequency_of_violation Violation_Code Violation_Time_bin
+#1                 462758             38          Afternoon
+#2                 346518             38       Late Morning
+#3                 203232             38            Evening
+#4                  47029             38       Late Evening
+#5                   2300             38            Morning
+#6                    464             38              Night
+
+
+# from the above output we can say in "Afternoon" time of the day Violating code 38 happens the most 
+# code 38 stands for "FAIL TO DSPLY MUNI METER RECPT"
+
+
+#6...Let’s try and find some seasonality in this data
+
+#First, divide the year into some number of seasons, and find frequencies of tickets for each season.
+#Then, find the 3 most common violations for each of these season
+
+
+#Assumption: Seasons are defined as: June-August->Summer, September-November->Spring, December-February->Winter, March-May-> Fall
+
+#for 2015 data
+
+Violation_Code_Seasons_2015 <- SparkR::sql("SELECT  count(*) Frequency_of_violation,  Violation_Code , 
+                                     (case when  substring(ISSUE_DATE,1,2)in ('06','07','08') then 'Summer'
+                                           when  substring(ISSUE_DATE,1,2)in ('09','10','11') then 'Fall'
+                                           when  substring(ISSUE_DATE,1,2)in ('12','01','02') then 'Winter'
+                                           when  substring(ISSUE_DATE,1,2)in ('03','04','05') then 'Spring'
+                                           else null end	  ) as Violation_Season_bin 
+                                           from nyc_tkt15_1_tbl 
+                                           where ISSUE_DATE is not null and 
+(TO_DATE(CAST(UNIX_TIMESTAMP(ISSUE_DATE, 'MM/dd/yyyy') AS TIMESTAMP)) between 
+TO_DATE(CAST(UNIX_TIMESTAMP('07/01/2014', 'MM/dd/yyyy') AS TIMESTAMP))
+and TO_DATE(CAST(UNIX_TIMESTAMP('06/30/2015', 'MM/dd/yyyy') AS TIMESTAMP)))
+group by Violation_Season_bin , Violation_Code
+                                           order by count(*) desc " )
+
+
+head(summarize(groupBy(Violation_Code_Seasons_2015,Violation_Code_Seasons_2015$Violation_Season_bin),
+               season_ticket_count=sum(Violation_Code_Seasons_2015$Frequency_of_violation)))
+#         Violation_Season_bin  season_ticket_count
+#Season_bin season_ticket_count
+#1               Spring             2860987
+#2               Summer             2838306
+#3                 Fall             2718502
+#4               Winter             2180241
+
+
+##seasonwise count of violating code
+#top 3 violation codes for summer season in 2015
+violation_code_season_2015_summer<-filter(Violation_Code_Seasons_2015,Violation_Code_Seasons_2015$Violation_Season_bin=='Summer')
+violation_code_season_2015_summer_grouped<-summarize(groupBy(violation_code_season_2015_summer,violation_code_season_2015_summer$Violation_Code),
+                                                     violation_count=sum(violation_code_season_2015_summer$Frequency_of_violation))
+head(arrange(violation_code_season_2015_summer_grouped,desc(violation_code_season_2015_summer_grouped$violation_count)),num=3) 
+
+
+#Violation_Code violation_count
+#1             21          439632
+#2             38          344262
+#3             14          239339
+
+#top 3 violation codes for spring season in 2015
+violation_code_season_2015_Spring<-filter(Violation_Code_Seasons_2015,Violation_Code_Seasons_2015$Violation_Season_bin=='Spring')
+violation_code_season_2015_Spring_grouped<-summarize(groupBy(violation_code_season_2015_Spring,violation_code_season_2015_Spring$Violation_Code),
+                                                     violation_count=sum(violation_code_season_2015_Spring$Frequency_of_violation))
+head(arrange(violation_code_season_2015_Spring_grouped,desc(violation_code_season_2015_Spring_grouped$violation_count)),num=3)
+
+#Violation_Code violation_count
+#1             21          425163
+#2             38          327048
+#3             14          243622
+
+
+# top 3 violation codes from winter season in 2015
+violation_code_season_2015_Winter<-filter(Violation_Code_Seasons_2015,Violation_Code_Seasons_2015$Violation_Season_bin=='Winter')
+violation_code_season_2015_Winter_grouped<-summarize(groupBy(violation_code_season_2015_Winter,violation_code_season_2015_Winter$Violation_Code),
+                                                     violation_count=sum(violation_code_season_2015_Winter$Frequency_of_violation))
+head(arrange(violation_code_season_2015_Winter_grouped,desc(violation_code_season_2015_Winter_grouped$violation_count)),num=3)
+
+
+#	 Violation_Code violation_count
+#1             38          306997
+#2             21          253043
+#3             14          193157
+
+# top 3 violation codes from fall season in 2015
+violation_code_season_2015_Fall<-filter(Violation_Code_Seasons_2015,Violation_Code_Seasons_2015$Violation_Season_bin=='Fall')
+violation_code_season_2015_Fall_grouped<-summarize(groupBy(violation_code_season_2015_Fall,violation_code_season_2015_Fall$Violation_Code),
+                                                   violation_count=sum(violation_code_season_2015_Fall$Frequency_of_violation))
+head(arrange(violation_code_season_2015_Fall_grouped,desc(violation_code_season_2015_Fall_grouped$violation_count)),num=3)
+
+#Violation_Code violation_count
+#1             21          351390
+#2             38          326700
+#3             14          232300
+
+
+#For 2016 data
+
+Violation_Code_Seasons_2016 <- SparkR::sql("SELECT  count(*) Frequency_of_violation,  Violation_Code , 
+                                     (case when  substring(ISSUE_DATE,1,2)in ('06','07','08') then 'Summer'
+                                           when  substring(ISSUE_DATE,1,2)in ('09','10','11') then 'Fall'
+                                           when  substring(ISSUE_DATE,1,2)in ('12','01','02') then 'Winter'
+                                           when  substring(ISSUE_DATE,1,2)in ('03','04','05') then 'Spring'
+                                           else null end	  ) as Violation_Season_bin 
+                                           from nyc_tkt16_1_tbl 
+                                           where ISSUE_DATE is not null and  
+(TO_DATE(CAST(UNIX_TIMESTAMP(ISSUE_DATE, 'MM/dd/yyyy') AS TIMESTAMP)) between 
+TO_DATE(CAST(UNIX_TIMESTAMP('07/01/2015', 'MM/dd/yyyy') AS TIMESTAMP))
+and TO_DATE(CAST(UNIX_TIMESTAMP('06/30/2016', 'MM/dd/yyyy') AS TIMESTAMP)))
+                                           group by Violation_Season_bin , Violation_Code
+                                           order by count(*) desc " )
+
+
+head(summarize(groupBy(Violation_Code_Seasons_2016,Violation_Code_Seasons_2016$Violation_Season_bin),
+               season_ticket_count=sum(Violation_Code_Seasons_2016$Frequency_of_violation)))
+
+			   
+#	Violation_Season_bin season_ticket_count
+#1               Spring             2789066
+#2               Summer             2214536
+#3                 Fall             2971672
+#4               Winter             2421620
+   
+			   
+
+#top 3 violation codes for summer season in 2016
+violation_code_season_2016_summer<-filter(Violation_Code_Seasons_2016,Violation_Code_Seasons_2016$Violation_Season_bin=='Summer')
+violation_code_season_2016_summer_grouped<-summarize(groupBy(violation_code_season_2016_summer,violation_code_season_2016_summer$Violation_Code),
+               violation_count=sum(violation_code_season_2016_summer$Frequency_of_violation))
+head(arrange(violation_code_season_2016_summer_grouped,desc(violation_code_season_2016_summer_grouped$violation_count)),num=3) 
+
+#	Violation_Code violation_count
+#1             21          358896
+#2             38          255600
+#3             14          200608
+
+#top 3 violation codes for spring season in 2016
+violation_code_season_2016_Spring<-filter(Violation_Code_Seasons_2016,Violation_Code_Seasons_2016$Violation_Season_bin=='Spring')
+violation_code_season_2016_Spring_grouped<-summarize(groupBy(violation_code_season_2016_Spring,violation_code_season_2016_Spring$Violation_Code),
+                                                     violation_count=sum(violation_code_season_2016_Spring$Frequency_of_violation))
+head(arrange(violation_code_season_2016_Spring_grouped,desc(violation_code_season_2016_Spring_grouped$violation_count)),num=3)
+
+#	Violation_Code violation_count
+#1             21          383448
+#2             36          374362
+#3             38          299439
+
+# top 3 violation codes from winter season in 2016
+violation_code_season_2016_Winter<-filter(Violation_Code_Seasons_2016,Violation_Code_Seasons_2016$Violation_Season_bin=='Winter')
+violation_code_season_2016_Winter_grouped<-summarize(groupBy(violation_code_season_2016_Winter,violation_code_season_2016_Winter$Violation_Code),
+                                                     violation_count=sum(violation_code_season_2016_Winter$Frequency_of_violation))
+head(arrange(violation_code_season_2016_Winter_grouped,desc(violation_code_season_2016_Winter_grouped$violation_count)),num=3)
+
+#Violation_Code violation_count
+#1             21          359905
+#2             36          314765
+#3             38          268409
+
+
+# top 3 violation codes from fall season in 2016
+violation_code_season_2016_Fall<-filter(Violation_Code_Seasons_2016,Violation_Code_Seasons_2016$Violation_Season_bin=='Fall')
+violation_code_season_2016_Fall_grouped<-summarize(groupBy(violation_code_season_2016_Fall,violation_code_season_2016_Fall$Violation_Code),
+                                                     violation_count=sum(violation_code_season_2016_Fall$Frequency_of_violation))
+head(arrange(violation_code_season_2016_Fall_grouped,desc(violation_code_season_2016_Fall_grouped$violation_count)),num=3)
+
+#Violation_Code violation_count
+#1             36          438320
+#2             21          395020
+#3             38          303387
+
+
+#For 2017 data
+
+Violation_Code_Seasons_2017 <- SparkR::sql("SELECT  count(*) Frequency_of_violation,  Violation_Code , 
+                                           (case when  substring(ISSUE_DATE,1,2)in ('06','07','08') then 'Summer'
+                                           when  substring(ISSUE_DATE,1,2)in ('09','10','11') then 'Fall'
+                                           when  substring(ISSUE_DATE,1,2)in ('12','01','02') then 'Winter'
+                                           when  substring(ISSUE_DATE,1,2)in ('03','04','05') then 'Spring'
+                                           else null end	  ) as Violation_Season_bin 
+                                           from nyc_tkt17_1_tbl 
+                                           where ISSUE_DATE is not null  and  
+(TO_DATE(CAST(UNIX_TIMESTAMP(ISSUE_DATE, 'MM/dd/yyyy') AS TIMESTAMP)) between 
+TO_DATE(CAST(UNIX_TIMESTAMP('07/01/2016', 'MM/dd/yyyy') AS TIMESTAMP))
+and TO_DATE(CAST(UNIX_TIMESTAMP('06/30/2017', 'MM/dd/yyyy') AS TIMESTAMP)))
+                                           group by Violation_Season_bin , Violation_Code
+                                           order by count(*) desc " )
+
+
+head(summarize(groupBy(Violation_Code_Seasons_2017,Violation_Code_Seasons_2017$Violation_Season_bin),
+               season_ticket_count=sum(Violation_Code_Seasons_2017$Frequency_of_violation)))
+
+#	Violation_Season_bin season_ticket_count
+#1               Spring             2873383
+#2               Summer             2353920
+#3                 Fall             2829224
+#4               Winter             2483036
+
+#plot of seasonal violation count yearwise
+season_tkt_count<-c(2951328,3098729,2718868,2182332,2790646,2438069,2973396,2424488,2880687,2606208,2830802,2485331)
+season<-as.factor(c('Spring','Summer','Fall','Winter','Spring','Summer','Fall','Winter','Spring','Summer','Fall','Winter'))
+year<-as.factor(c(2015,2015,2015,2015,2016,2016,2016,2016,2017,2017,2017,2017))
+season_df<-data.frame(season_tkt_count,season,year)
+ggplot(season_df,aes(x=season,y=season_tkt_count,fill=year))+geom_col()
+
+
+#top 3 violation codes for summer season in 2017
+violation_code_season_2017_summer<-filter(Violation_Code_Seasons_2017,Violation_Code_Seasons_2017$Violation_Season_bin=='Summer')
+violation_code_season_2017_summer_grouped<-summarize(groupBy(violation_code_season_2017_summer,violation_code_season_2017_summer$Violation_Code),
+                                                     violation_count=sum(violation_code_season_2017_summer$Frequency_of_violation))
+head(arrange(violation_code_season_2017_summer_grouped,desc(violation_code_season_2017_summer_grouped$violation_count)),num=3) 
+
+
+#Violation_Code violation_count
+#1             21          378699
+#2             38          235725
+#3             14          207495
+
+
+#top 3 violation codes for spring season in 2017
+violation_code_season_2017_Spring<-filter(Violation_Code_Seasons_2017,Violation_Code_Seasons_2017$Violation_Season_bin=='Spring')
+violation_code_season_2017_Spring_grouped<-summarize(groupBy(violation_code_season_2017_Spring,violation_code_season_2017_Spring$Violation_Code),
+                                                     violation_count=sum(violation_code_season_2017_Spring$Frequency_of_violation))
+head(arrange(violation_code_season_2017_Spring_grouped,desc(violation_code_season_2017_Spring_grouped$violation_count)),num=3)
+
+#	Violation_Code violation_count
+#1             21          402424
+#2             36          344834
+#3             38          271167
+
+
+# top 3 violation codes from winter season in 2017
+violation_code_season_2017_Winter<-filter(Violation_Code_Seasons_2017,Violation_Code_Seasons_2017$Violation_Season_bin=='Winter')
+violation_code_season_2017_Winter_grouped<-summarize(groupBy(violation_code_season_2017_Winter,violation_code_season_2017_Winter$Violation_Code),
+                                                     violation_count=sum(violation_code_season_2017_Winter$Frequency_of_violation))
+head(arrange(violation_code_season_2017_Winter_grouped,desc(violation_code_season_2017_Winter_grouped$violation_count)),num=3)
+
+#	Violation_Code violation_count
+#1             21          362016
+#2             36          359338
+#3             38          259710
+
+# top 3 violation codes from fall season in 2017
+violation_code_season_2017_Fall<-filter(Violation_Code_Seasons_2017,Violation_Code_Seasons_2017$Violation_Season_bin=='Fall')
+violation_code_season_2017_Fall_grouped<-summarize(groupBy(violation_code_season_2017_Fall,violation_code_season_2017_Fall$Violation_Code),
+                                                   violation_count=sum(violation_code_season_2017_Fall$Frequency_of_violation))
+head(arrange(violation_code_season_2017_Fall_grouped,desc(violation_code_season_2017_Fall_grouped$violation_count)),num=3)
+
+#Violation_Code violation_count
+#1             36          456046
+#2             21          357257
+#3             38          283816
+
+
+
+
+
+#7#The fines collected from all the parking violation constitute a revenue source for the NYC police department. Let’s take an example of estimating that for the 3 most commonly occurring codes.
+#Find total occurrences of the 3 most common violation codes
+
+violiation_code_order_15<-SparkR::sql("select count(*) frequency_of_violation, Violation_Code  from nyc_tkt15_1_tbl group by Violation_Code order by count(*) DESC")
+violiation_code_order_16<-SparkR::sql("select count(*) frequency_of_violation, Violation_Code  from nyc_tkt16_1_tbl group by Violation_Code order by count(*) DESC")
+violiation_code_order_17<-SparkR::sql("select count(*) frequency_of_violation, Violation_Code  from nyc_tkt17_1_tbl group by Violation_Code order by count(*) DESC")
+head(violiation_code_order_15, num = 3 )
+#       frequency_of_violation Violation_Code
+#1                1501614             21
+#2                1324586             38
+#3                 924627             14
+ 
+head(violiation_code_order_16, num = 3 )
+#frequency_of_violation Violation_Code
+#1                1531587             21
+#2                1253512             36
+#3                1143696             38
+head(violiation_code_order_17, num = 3 )
+#      frequency_of_violation Violation_Code
+#1                1528588             21
+#2                1400614             36
+#3                1062304             38
+
+#Then, search the internet for NYC parking violation code fines. You will find a website (on the nyc.gov URL) that lists these fines. They’re divided into two categories, one for the highest-density locations of the city, the other for the rest of the city. For simplicity, take an average of the two.
+
+#Takig reference from below website for fine charges for most commonly violation occurance
+#https://www1.nyc.gov/site/finance/vehicles/services-violation-codes.page
+#Code |highdensityfine|otherarea|avg | description 
+#14  |   115$ |  115$  |115$ | General No Standing: Standing or parking where standing is not allowed by sign, street marking or; traffic control device
+#21  |   65$ |  45$  | 54.5$  | Street Cleaning: No parking where parking is not allowed by sign, street marking or traffic control device.
+#36  |   50$ |  50$   | 50$ | Exceeding the posted speed limit in or near a designated school zone.
+#37  |   65$ |  35$   | 50$ | Muni Meter --(37) Parking in excess of the allowed time Drivers get a 5-minute grace period past the expired time on Muni-Meter receipts.
+#38  |   65$ |  35$   | 50$ | Muni Meter --(38) Failing to show a receipt or tag in the windshield.Drivers get a 5-minute grace period past the expired time on Muni-Meter receipts.
+
+#Using this information, find the total amount collected for all of the fines. State the code which has the highest total collection.
+# assumption : the total collection is for the three most commonly occurance of violation code
+# per above code the three most comonly occurance of violation code are 14 , 21,36 and 38 
+# Using the average value calculated for the most common violation
+ 
+#since we know that the most the number of occurance if multiplied by the average fine collected then we will get the fine collected for a violation occurance
+
+#2015 , top three violation code 14 , 21 , 38 
+fine_collection_15<-SparkR::sql("select count(*) frequency_of_violation, Violation_Code  from nyc_tkt15_1_tbl where Violation_Code in (21,14,38) group by Violation_Code order by count(*) DESC")
+createOrReplaceTempView(fine_collection_15,"fine_collection_15_tbl")
+fine_collection_15_1<-SparkR::sql("select  frequency_of_violation, Violation_Code , ( case when Violation_Code = 14 then 115 when Violation_Code = 21 then 54.5 when Violation_Code = 38 then 50 else 0 end) as Avg_fine , (  frequency_of_violation * ( case when Violation_Code = 14 then 115 when Violation_Code = 21 then 54.5 when Violation_Code = 38 then 50 else 0 end)) total_fine  from fine_collection_15_tbl")
+head(fine_collection_15_1)
+# frequency_of_violation Violation_Code Avg_fine total_fine
+#1                1501614             21     54.5   81837963
+#2                1324586             38     50.0   66229300
+#3                 924627             14    115.0  106332105
+Total_fine_2015 <- summarize(fine_collection_15_1,Total_fine = sum(fine_collection_15_1$total_fine))
+head(Total_fine_2015)
+# Total fine collected for top three violation code in $ in 2015 is : 254399368
+
+#2016, top three violation code 21, 36 , 38 
+fine_collection_16<-SparkR::sql("select count(*) frequency_of_violation, Violation_Code  from nyc_tkt16_1_tbl where Violation_Code in (21,36,38) group by Violation_Code order by count(*) DESC")
+createOrReplaceTempView(fine_collection_16,"fine_collection_16_tbl")
+fine_collection_16_1<-SparkR::sql("select  frequency_of_violation, Violation_Code , ( case when Violation_Code = 21 then 54.5 when Violation_Code in (36,38) then 50 else 0 end) as Avg_fine , (  frequency_of_violation * ( case when Violation_Code = 21 then 54.5 when Violation_Code in (36,38) then 50 else 0 end)) total_fine  from fine_collection_16_tbl")
+head(fine_collection_16_1)
+# frequency_of_violation Violation_Code Avg_fine total_fine
+#1                1531587             21     54.5   83471492
+#2                1253512             36     50.0   62675600
+#3                1143696             38     50.0   57184800
+Total_fine_2016 <- summarize(fine_collection_16_1,Total_fine = sum(fine_collection_16_1$total_fine))
+head(Total_fine_2016)
+# Total fine collected for top three violation code in $ in 2016 is : 203331892
+
+#2017, top three violation code 21, 36 , 38 
+fine_collection_17<-SparkR::sql("select count(*) frequency_of_violation, Violation_Code  from nyc_tkt17_1_tbl where Violation_Code in (21,36,38) group by Violation_Code order by count(*) DESC")
+createOrReplaceTempView(fine_collection_17,"fine_collection_17_tbl")
+fine_collection_17_1<-SparkR::sql("select  frequency_of_violation, Violation_Code , ( case when Violation_Code = 21 then 54.5 when Violation_Code in (36,38) then 50 else 0 end) as Avg_fine , (  frequency_of_violation * ( case when Violation_Code = 21 then 54.5 when Violation_Code in (36,38) then 50 else 0 end)) total_fine  from fine_collection_17_tbl")
+head(fine_collection_17_1)
+# frequency_of_violation Violation_Code Avg_fine total_fine
+#1                1528588             21     54.5   83308046
+#2                1400614             36     50.0   70030700
+#3                1062304             38     50.0   53115200
+
+
+##yearwise plot of top3 total fine indicating the violating codes
+total_fine<-c(81837963,66229300,106332105,83471492,62675600,57184800,83308046,70030700,53115200)
+violation_code<-as.factor(c(21,38,14,21,36,38,21,36,38))
+year<-as.factor(c(2015,2015,2015,2016,2016,2016,2017,2017,2017))
+fine_df<-data.frame(total_fine,violation_code,year)
+ggplot(fine_df,aes(x=violation_code,y=total_fine,fill=year))+geom_col()
+
+Total_fine_2017 <- summarize(fine_collection_17_1,Total_fine = sum(fine_collection_17_1$total_fine))
+head(Total_fine_2017)
+# Total fine collected for top three violation code in $ in 2017 is : 206453946
+
+#What can you intuitively infer from these findings?
+# We can see the most revenue comes from the violation of :- 
+# 1) Street Cleaning: No parking where parking is not allowed by sign
+# 2) Muni Meter --(38) Failing to show a receipt or tag in the windshield.
+# 3) Muni Meter --(37) Parking in excess of the allowed time Drivers
+# 4) General No Standing: Standing or parking where standing is not allowed by sign
+
+
